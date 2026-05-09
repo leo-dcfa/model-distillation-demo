@@ -23,3 +23,68 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+    "A",     # flake8-builtins (don't shadow builtins)
+    "ASYNC", # flake8-async
+    "B",     # flake8-bugbear (likely bugs)
+    "BLE",   # flake8-blind-except
+    "C4",    # flake8-comprehensions
+    "C90",   # mccabe complexity
+    "E",     # pycodestyle errors
+    "EXE",   # flake8-executable
+    "F",     # pyflakes
+    "FLY",   # flynt (.format -> f-string)
+    "G",     # flake8-logging-format
+    "I",     # isort
+    "ICN",   # import conventions (np, pd, plt, ...)
+    "ISC",   # implicit string concatenation
+    "LOG",   # flake8-logging
+    "N",     # pep8-naming
+    "NPY",   # numpy-specific
+    "PERF",  # perflint
+    "PIE",   # flake8-pie
+    "PLC",   # pylint conventions
+    "PLE",   # pylint errors
+    "PLW",   # pylint warnings
+    "PT",    # flake8-pytest-style
+    "PTH",   # use pathlib over os.path
+    "Q",     # flake8-quotes
+    "RET",   # flake8-return
+    "RUF",   # ruff-specific
+    "S",     # flake8-bandit (security)
+    "SIM",   # flake8-simplify
+    "T10",   # flake8-debugger (forbid pdb/breakpoint, but allow print)
+    "TC",    # flake8-type-checking
+    "TID",   # flake8-tidy-imports
+    "TRY",   # tryceratops (exception antipatterns)
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+
+ignore = [
+    "ISC001",  # conflicts with the formatter
+    "S101",    # `assert` is fine in research/demo code (shape checks etc.)
+    "PLW2901", # for-loop variable overwritten — often intentional
+    "TRY003",  # long messages outside exception class — too noisy
+    "PLC0415", # imports not at top of file — sometimes needed for lazy torch/cuda import
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts / training entrypoints can use prints freely and skip a few niceties.
+"distillation/distill_student.py" = ["T201"]
+"main.py" = ["T201"]
