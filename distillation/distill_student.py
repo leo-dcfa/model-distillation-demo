@@ -3,12 +3,12 @@ from pathlib import Path
 from typing import Final
 
 from datasets import Dataset
-from transformers import AutoTokenizer
+from transformers import TokenizersBackend
 
 OUTPUT_DIR: Final[str] = "./distilled_student"
 
 
-def load_dataset_from_jsonl(path: str, tokenizer: AutoTokenizer) -> Dataset:
+def load_dataset_from_json(path: str, tokenizer: TokenizersBackend) -> Dataset:
     rows = []
     with Path.open(Path(path)) as f:
         for line in f:
