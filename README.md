@@ -6,7 +6,7 @@ I built this to see what distillation is. It is easy to spend a lot of time read
 
 ## Four distillation methods in this repo
 
-The teacher generates step-by-step solutions to GSM8K math problems. The student (Qwen2.5-0.5B) is then trained four different ways:
+The teacher generates step-by-step solutions to [GSM8K math problems](https://huggingface.co/datasets/openai/gsm8k). The student (Qwen2.5-0.5B) is then trained four different ways:
 
 1. **Sequence-level** 
 2. **Token-level / logit KL**
