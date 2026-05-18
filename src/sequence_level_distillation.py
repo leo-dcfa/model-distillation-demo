@@ -13,7 +13,7 @@ from src.logger import JsonlTrainerCallback
 from src.utils import get_model, get_tokenizer
 
 
-OUTPUT_DIR: Final[str] = "./distilled_student"
+OUTPUT_DIR: Final[str] = "./distilled_sequence_level"
 RUN_NAME: Final[str] = "sequence_level"
 
 

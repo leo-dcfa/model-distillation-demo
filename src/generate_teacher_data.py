@@ -23,7 +23,7 @@ def main():
     print(f"Loading teacher {TEACHER_MODEL}")
     tokenizer = get_tokenizer(TEACHER_MODEL)
     model = get_model(TEACHER_MODEL)
-    print("Loading GSM8K...")
+    # run .eval to indicate we are running inference
     model.eval()
     print("Loading GSM8K...")
     ds = load_dataset("openai/gsm8k", "main", split="train").select(range(DEFAULT_NUMBER_EXAMPLES))
