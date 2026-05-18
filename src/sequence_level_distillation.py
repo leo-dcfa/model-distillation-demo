@@ -2,15 +2,15 @@ import json
 from pathlib import Path
 from typing import Final
 
-import torch
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer, TokenizersBackend
+from transformers import TokenizersBackend
 from trl.trainer.sft_config import SFTConfig
 from trl.trainer.sft_trainer import SFTTrainer
 
 from src.config import EPOCHS, STUDENT_MODEL, TEACHER_DATA
 from src.logger import JsonlTrainerCallback
+from src.utils import get_model, get_tokenizer
 
 
 OUTPUT_DIR: Final[str] = "./distilled_student"
@@ -81,23 +81,6 @@ def main():
     trainer.train()
     trainer.save_model(OUTPUT_DIR)
     print(f"\nSaved distilled student adapter to {OUTPUT_DIR}")
-
-
-def get_tokenizer(model_name: str) -> TokenizersBackend:
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if not isinstance(tokenizer, TokenizersBackend):
-        raise TypeError(f"Cannot proceed; expected Tonenizer backend, got {type(tokenizer)}")
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    return tokenizer
-
-
-def get_model(model_name: str):
-    return AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=torch.bfloat16,
-        device_map="auto",
-    )
 
 
 if __name__ == "__main__":
