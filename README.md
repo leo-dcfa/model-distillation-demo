@@ -15,4 +15,17 @@ The teacher generates step-by-step solutions to [GSM8K math problems](https://hu
 3. **On-policy / GKD**
 4. **Cross-tokenizer / ULD**
 
-[In progress]
+## Method 1: Sequence-level distillation
+
+The simplest approach. The teacher generates a completion for each prompt; the
+student is fine-tuned with standard next-token cross-entropy on those completions.
+We're treating the teacher's output text as ground truth and doing ordinary SFT.
+
+**Pros.** Works against any API (you only need to call generate). Cheap to
+implement. No tokenizer constraints — the student can have a completely
+different vocabulary from the teacher. This is how DeepSeek's R1-Distill
+models were trained.
+
+**Cons.** Throws away everything except the teacher's argmax at each token.
+If the teacher was 60% sure about token X and 38% sure about a near-synonym Y,
+the student is taught that Y is wrong. A lot of useful uncertainty signal is lost.
