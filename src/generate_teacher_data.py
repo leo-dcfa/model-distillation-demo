@@ -23,7 +23,6 @@ def main():
     print(f"Loading teacher {TEACHER_MODEL}")
     tokenizer = get_tokenizer(TEACHER_MODEL)
     model = get_model(TEACHER_MODEL)
-    # here we say `not training, we are doing inference`
     print("Loading GSM8K...")
     model.eval()
     print("Loading GSM8K...")
