@@ -7,16 +7,11 @@ from datasets.load import load_dataset
 from tqdm import tqdm
 
 from src.config import DEVICE, TEACHER_MODEL
-from src.constants import DEFAULT_NUMBER_EXAMPLES
+from src.constants import DEFAULT_NUMBER_EXAMPLES, SYSTEM_PROMPT
 from src.utils import get_model, get_tokenizer
 
 
 DEFAULT_OUTPUT_TEACHER_DATA: Final[str] = "teacher_data.jsonl"
-SYSTEM_PROMPT: Final[str] = (
-    "You are a careful math tutor. Solve the problem step by step, "
-    "showing your reasoning clearly. End your response with the final "
-    "answer on its own line in the form '#### <number>'."
-)
 
 
 def main():

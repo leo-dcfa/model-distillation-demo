@@ -11,6 +11,7 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 from src.config import DEVICE, EPOCHS, STUDENT_MODEL, TEACHER_DATA
+from src.constants import SYSTEM_PROMPT
 from src.logger import MetricsLogger
 from src.utils import get_model, get_tokenizer
 
@@ -51,12 +52,18 @@ class AlignedDataset(Dataset):
                 # as matching distributions over the response text — the prompt is
                 # context for both models, but the loss only fires on response tokens.
                 t_prompt = teacher_tok.apply_chat_template(
-                    [{"role": "user", "content": ex["question"]}],
+                    [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": ex["question"]},
+                    ],
                     tokenize=False,
                     add_generation_prompt=True,
                 )
                 s_prompt = student_tok.apply_chat_template(
-                    [{"role": "user", "content": ex["question"]}],
+                    [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": ex["question"]},
+                    ],
                     tokenize=False,
                     add_generation_prompt=True,
                 )

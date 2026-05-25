@@ -38,6 +38,7 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 from src.config import DEVICE, EPOCHS, STUDENT_MODEL, TEACHER_DATA, TEACHER_MODEL
+from src.constants import SYSTEM_PROMPT
 from src.logger import MetricsLogger
 from src.utils import get_model, get_tokenizer
 
@@ -65,7 +66,10 @@ class PromptDataset(Dataset):
         with Path.open(Path(path)) as f:
             for line in f:
                 ex = json.loads(line)
-                msgs = [{"role": "user", "content": ex["question"]}]
+                msgs = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": ex["question"]},
+                ]
                 prompt_ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True)["input_ids"]
                 if len(prompt_ids) > max_len:
                     continue

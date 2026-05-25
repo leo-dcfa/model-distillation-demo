@@ -9,6 +9,7 @@ from trl.trainer.sft_config import SFTConfig
 from trl.trainer.sft_trainer import SFTTrainer
 
 from src.config import EPOCHS, STUDENT_MODEL, TEACHER_DATA
+from src.constants import SYSTEM_PROMPT
 from src.logger import JsonlTrainerCallback
 from src.utils import get_model, get_tokenizer
 
@@ -23,6 +24,7 @@ def load_dataset_from_jsonl(path: str, tokenizer: TokenizersBackend) -> Dataset:
         for line in f:
             ex = json.loads(line)
             messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": ex["question"]},
                 {"role": "assistant", "content": ex["teacher_solution"]},
             ]

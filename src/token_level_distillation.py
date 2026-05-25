@@ -11,6 +11,7 @@ from tqdm import tqdm
 from transformers import TokenizersBackend, get_cosine_schedule_with_warmup
 
 from src.config import DEVICE, EPOCHS, STUDENT_MODEL, TEACHER_DATA, TEACHER_MODEL
+from src.constants import SYSTEM_PROMPT
 from src.logger import MetricsLogger
 from src.utils import get_model, get_tokenizer
 
@@ -31,7 +32,10 @@ class TeacherDataset(Dataset):
         with Path.open(Path(path)) as f:
             for line in f:
                 ex = json.loads(line)
-                prompt_msgs = [{"role": "user", "content": ex["question"]}]
+                prompt_msgs = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": ex["question"]},
+                ]
                 full_msgs = [*prompt_msgs, {"role": "assistant", "content": ex["teacher_solution"]}]
                 #  the user's question only, with a "now it's the assistant's turn" marker appended (add_generation_prompt=True)
                 prompt_ids = tokenizer.apply_chat_template(prompt_msgs, add_generation_prompt=True)["input_ids"]
