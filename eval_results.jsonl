@@ -1,0 +1,5 @@
+{"adapter": "base", "correct": 5, "total": 50, "accuracy": 0.1}
+{"adapter": "distilled_sequence_level", "correct": 20, "total": 50, "accuracy": 0.4}
+{"adapter": "distilled_token_level", "correct": 22, "total": 50, "accuracy": 0.44}
+{"adapter": "distilled_student_onpolicy", "correct": 23, "total": 50, "accuracy": 0.46}
+{"adapter": "distilled_student_uld", "correct": 3, "total": 50, "accuracy": 0.06}

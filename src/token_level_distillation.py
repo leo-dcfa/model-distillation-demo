@@ -10,14 +10,13 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import TokenizersBackend, get_cosine_schedule_with_warmup
 
-from src.config import DEVICE, STUDENT_MODEL, TEACHER_DATA, TEACHER_MODEL
+from src.config import DEVICE, EPOCHS, STUDENT_MODEL, TEACHER_DATA, TEACHER_MODEL
 from src.logger import MetricsLogger
 from src.utils import get_model, get_tokenizer
 
 
 TEMPERATURE = 2.0
 MAX_LENGTH = 1024
-EPOCHS = 3
 
 BATCH_SIZE = 2  # small batches since we have two models loaded in memory
 GRAD_ACCUM = 8

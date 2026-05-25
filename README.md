@@ -66,3 +66,69 @@ passes through it on every batch.
 
 Most modern LLM distillation uses reverse KL or a hybrid. Our on-policy script
 uses reverse KL by default, following GKD.
+
+## Method 3: On-policy distillation
+
+Sequence-level and token-level both train the student on prefixes the *teacher*
+generated. At inference time the student generates its own (messier) prefixes
+— and has never been trained to recover from its own mistakes. This is exposure
+bias, the classic train/test distribution mismatch.
+
+On-policy distillation flips the data source: the student generates a
+continuation from a prompt, the teacher scores its full next-token distribution
+at every position of that continuation, and the student is trained to match the
+teacher *given the student's own prefixes*. Think of it as a coach correcting
+the student's mistakes in real time, rather than demonstrating perfect technique
+from the sidelines.
+
+We follow GKD (Generalized Knowledge Distillation, Agarwal et al. 2024): mix
+on-policy steps with off-policy steps (using the teacher's pre-generated text)
+for stability. Pure on-policy is unstable early because the student's
+generations are gibberish — there's nothing useful for the teacher to score.
+Loss is reverse KL with T=1, following MiniLLM/GKD.
+
+**Pros.** Closes the train/test gap. The student is explicitly trained on the
+distribution it will actually see at inference, including its own
+characteristic mistakes. Tends to produce more robust students than off-policy
+methods at the same data budget.
+
+**Cons.** The slowest method by far — every on-policy step requires a full
+sampling pass through the student before the forward/backward. Still needs
+white-box teacher access and matching tokenizers. Hyperparameter-sensitive:
+the on-policy / off-policy mix matters, and pure on-policy can diverge early.
+
+## Method 4: Cross-tokenizer distillation (ULD)
+
+Token-level distillation breaks the moment teacher and student have different
+vocabularies — their next-token distributions live in non-comparable spaces and
+the KL is undefined. That rules out distilling, say, Llama → Qwen, which is
+exactly the regime you care about if you want to combine the best open teacher
+with whatever student architecture suits you.
+
+ULD (Universal Logit Distillation, Boizard et al. 2024) sidesteps the vocab
+mismatch with two tricks:
+
+1. **Positional alignment via character offsets.** Both tokenizers expose the
+   character span each token covers in the source text. For every student
+   response token, we pick the teacher token whose ending character is closest.
+   Same text, different segmentation, aligned by where the boundaries land.
+2. **Sorted top-K matching.** At each aligned position, take the top-K
+   probabilities from teacher and student, *sort* them, and compute KL between
+   the two K-length vectors. Token identity is thrown away; only the shape of
+   the distribution is matched. That shape lives in a vocab-independent
+   K-dimensional space, so the comparison is well-defined.
+
+This repo distills `SmolLM2-1.7B-Instruct` (teacher) → `Qwen2.5-0.5B`
+(student) — two completely different tokenizers.
+
+**Pros.** The only method here that works across model families. Lets you
+pick teacher and student independently — useful when the best available
+teacher and the architecture you want to deploy come from different ecosystems.
+
+**Cons.** Lossy on multiple axes: character-offset alignment is approximate
+(it can skew badly when one tokenizer splits a word the other keeps whole),
+sorted top-K matching discards which tokens the probabilities belong to, and
+the top-K cutoff truncates the tail entirely. Expect a noticeably weaker
+student than same-tokenizer token-level distillation on the same data. Also
+the most fiddly of the four to implement correctly — most of the code is
+alignment bookkeeping, not the loss itself.
