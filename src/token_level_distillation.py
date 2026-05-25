@@ -4,14 +4,15 @@ from pathlib import Path
 from typing import Final
 
 import torch
-import torch.nn.functional as F
-from datasets.arrow_dataset import Dataset
-from peft import LoraConfig
-from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, TokenizersBackend
+import torch.nn.functional as F  # noqa: N812
+from peft import LoraConfig, get_peft_model
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+from transformers import TokenizersBackend, get_cosine_schedule_with_warmup
 
-from src.config import DEVICE, STUDENT_MODEL, TEACHER_MODEL
-from src.utils import get_model
+from src.config import DEVICE, STUDENT_MODEL, TEACHER_DATA, TEACHER_MODEL
+from src.logger import MetricsLogger
+from src.utils import get_model, get_tokenizer
 
 
 TEMPERATURE = 2.0
@@ -22,21 +23,21 @@ BATCH_SIZE = 2  # small batches since we have two models loaded in memory
 GRAD_ACCUM = 8
 LR = 2e-4
 WARMUP_RATIO = 0.03
-OUTPUT_DIR: Final[str] = "./distilled_sequence_level"
+OUTPUT_DIR: Final[str] = "./distilled_token_level"
 
 
-class TeacherDataSet(Dataset):
+class TeacherDataset(Dataset):
     def __init__(self, path: str, tokenizer: TokenizersBackend, max_length=MAX_LENGTH):
         self.examples = []
         with Path.open(Path(path)) as f:
             for line in f:
                 ex = json.loads(line)
-                prompt_msgs = [{"role": "user", "content": ex["requestion"]}]
+                prompt_msgs = [{"role": "user", "content": ex["question"]}]
                 full_msgs = [*prompt_msgs, {"role": "assistant", "content": ex["teacher_solution"]}]
                 #  the user's question only, with a "now it's the assistant's turn" marker appended (add_generation_prompt=True)
-                prompt_ids = tokenizer.apply_chat_template(prompt_msgs, add_generation_prompt=True)
+                prompt_ids = tokenizer.apply_chat_template(prompt_msgs, add_generation_prompt=True)["input_ids"]
                 #  the user's question and the teacher's full response
-                full_ids = tokenizer.apply_chat_template(full_msgs)
+                full_ids = tokenizer.apply_chat_template(full_msgs)["input_ids"]
                 # input ids is the full tokenized conversation (user prompt + assistant solution)
                 # prompt_len is the length of the prompt portion only
                 self.examples.append(
@@ -70,7 +71,7 @@ def collate(batch, pad_token_id):
     }
 
 
-def kl_loss(student_logits, teacher_logits, loss_mask, T, direction="forward"):
+def kl_loss(student_logits, teacher_logits, loss_mask, T, direction="forward"):  # noqa: N803
     """Token-wise KL divergence, masked to assistant-only positions.
 
     student_logits, teacher_logits: (B, L, V)
@@ -131,26 +132,16 @@ def main():
     print(f"KL direction: {args.kl}, alpha (CE weight): {args.alpha}")
 
     # Tokenizer (shared between teacher and student because they're same family)
-    tokenizer = get_model(STUDENT_MODEL)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = get_tokenizer(STUDENT_MODEL)
 
     print(f"Loading teacher: {TEACHER_MODEL}")
-    teacher = AutoModelForCausalLM.from_pretrained(
-        TEACHER_MODEL,
-        torch_dtype=torch.bfloat16,
-        device_map=DEVICE,
-    )
+    teacher = get_model(TEACHER_MODEL)
     teacher.eval()
     for p in teacher.parameters():
         p.requires_grad = False
 
     print(f"Loading student: {STUDENT_MODEL}")
-    student = AutoModelForCausalLM.from_pretrained(
-        STUDENT_MODEL,
-        torch_dtype=torch.bfloat16,
-        device_map=DEVICE,
-    )
+    student = get_model(STUDENT_MODEL)
     lora_config = LoraConfig(
         r=16,
         lora_alpha=32,
@@ -187,7 +178,7 @@ def main():
         betas=(0.9, 0.95),
         weight_decay=0.01,
     )
-    total_steps = (len(loader) * epochs) // GRAD_ACCUM
+    total_steps = (len(loader) * EPOCHS) // GRAD_ACCUM
     warmup_steps = int(total_steps * WARMUP_RATIO)
     scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 
@@ -199,11 +190,11 @@ def main():
     step = 0
     optimizer.zero_grad()
 
-    for epoch in range(epochs):
-        pbar = tqdm(loader, desc=f"Epoch {epoch + 1}/{epochs}")
+    for epoch in range(EPOCHS):
+        pbar = tqdm(loader, desc=f"Epoch {epoch + 1}/{EPOCHS}")
         running_kl = running_ce = 0.0
         for i, batch in enumerate(pbar):
-            batch = {k: v.to(device) for k, v in batch.items()}
+            batch = {k: v.to(DEVICE) for k, v in batch.items()}
 
             # Teacher forward (no grad)
             with torch.no_grad():
@@ -216,7 +207,7 @@ def main():
 
             # Compute losses
             l_kl = kl_loss(s_logits, t_logits, batch["loss_mask"], T=TEMPERATURE, direction=args.kl)
-            l_ce = ce_loss(s_logits, batch["input_ids"], batch["loss_mask"]) if args.alpha > 0 else torch.tensor(0.0, device=device)
+            l_ce = ce_loss(s_logits, batch["input_ids"], batch["loss_mask"]) if args.alpha > 0 else torch.tensor(0.0, device=DEVICE)
             loss = args.alpha * l_ce + (1.0 - args.alpha) * l_kl
 
             (loss / GRAD_ACCUM).backward()
@@ -244,7 +235,7 @@ def main():
             pbar.set_postfix(kl=f"{running_kl:.3f}", ce=f"{running_ce:.3f}", lr=f"{scheduler.get_last_lr()[0]:.1e}")
 
     # Save
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     student.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
     print(f"\nSaved token-level distilled student adapter to {OUTPUT_DIR}")
