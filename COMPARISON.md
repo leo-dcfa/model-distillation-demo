@@ -1,124 +1,128 @@
 # Distillation methods: side-by-side comparison
 
-5-epoch run of all four methods against 500 GSM8K teacher solutions, evaluated
-on 50 held-out GSM8K test problems via greedy decoding.
+Each method trained for 15 epochs against 500 GSM8K teacher solutions
+(`Qwen2.5-3B-Instruct` for methods 1–3, `SmolLM2-1.7B-Instruct` for ULD),
+then evaluated on 100 held-out GSM8K test problems via greedy decoding.
+
+The system prompt
+(`"...end with the final answer in the form '#### <number>'"`) is now carried
+through `prompt_msgs` / `full_msgs` in every training script — so the students
+see at training time the exact context the eval uses, and natively produce
+`#### N` instead of the model's default `\boxed{N}`.
 
 ## Headline numbers
 
-| Method | Teacher | GSM8K@50 | Δ vs base | Train time | Steps logged |
+| Method | Teacher | GSM8K@100 | Δ vs base | Train time | Loss start → end |
 | --- | --- | --: | --: | --: | --: |
-| **base** (no distillation) | — | 10% | — | — | — |
-| **Sequence-level** (SFT on teacher text) | Qwen2.5-3B-Instruct | 40% | +30 | ~1.5 min | 17 |
-| **Token-level KL** (forward, α=0.1, T=2) | Qwen2.5-3B-Instruct | 44% | +34 | ~2 min | 155 |
-| **On-policy GKD** (reverse KL, 50/50 mix) | Qwen2.5-3B-Instruct | **46%** | **+36** | ~35 min | 155 |
-| **Cross-tokenizer ULD** (sorted top-K KL) | SmolLM2-1.7B-Instruct | 6% | -4 | ~2 min | 155 |
+| **base** (no distillation) | — | 9% | — | — | — |
+| **Sequence-level** (SFT on teacher text) | Qwen2.5-3B-Instruct | 43% | +34 | 2.8 min | 1.13 → 0.17 |
+| **Token-level KL** (forward, α=0.1, T=2) | Qwen2.5-3B-Instruct | 37% | +28 | 5.7 min | 0.57 → 0.59 ⚠ |
+| **On-policy GKD** (reverse KL, 50/50 mix) | Qwen2.5-3B-Instruct | **44%** | **+35** | **114 min** | 0.22 → 0.19 |
+| **Cross-tokenizer ULD** (sorted top-K KL) | SmolLM2-1.7B-Instruct | 12% | +3 | 4.0 min | 0.13 → 0.11 |
 
 All students are LoRA adapters (r=16, q/k/v/o projections) on `Qwen2.5-0.5B`.
-Eval is greedy generation, 512 max new tokens, scored by extracting the final
-number after `#### ` or `\boxed{...}` and comparing to ground truth.
+Greedy decoding, 512 max new tokens. Loss values across rows aren't comparable
+in magnitude (different losses, scales, temperatures) — only trajectories
+within a row are meaningful.
 
-## The format-mismatch trap (read this first)
+## What changed from the 5-epoch run
 
-First-pass eval scored token-level, on-policy, and ULD at **0%**. They weren't
-broken — they were producing correct math in a different output format.
+| | 5ep @ n=50 | 15ep @ n=100 | delta |
+| --- | --: | --: | --: |
+| base | 10% | 9% | flat |
+| Sequence-level | 40% | 43% | +3 |
+| Token-level | 44% | **37%** | **-7** |
+| On-policy | 46% | 44% | -2 |
+| ULD | 6% | 12% | +6 |
 
-The teacher data was generated *with* the system prompt
-`"...End your response with the final answer on its own line in the form '#### <number>'."`,
-so the saved teacher solutions are 466/500 `#### N` and 27/500 `\boxed{N}`.
+Sequence-level and ULD got better with more training. **Token-level got
+worse.** Its training loss confirms the diagnosis: it bottoms out at 0.185
+mid-training and *climbs back to 0.594* by the end. The 0.5B student is
+memorizing 500 teacher distributions long before epoch 15, then drifting.
 
-The training scripts then drop the system prompt:
-```python
-prompt_msgs = [{"role": "user", "content": ex["question"]}]   # no system msg
-```
-Sequence-level survives this because CE on the literal saved text forces the
-student to reproduce `#### N` regardless. The KL methods don't: they train the
-student to match the teacher's *distribution* given the dropped-system-prompt
-context, where the Qwen 3B instruct model naturally drifts toward
-`\boxed{N}`. So the student fluently learns `\boxed{N}` instead.
+On-policy doesn't show the same drift even at the same epoch count, because
+its training data is *constantly regenerated* by the student — every
+on-policy step produces fresh contexts the student hasn't seen. That's the
+implicit regularization GKD buys you, beyond just closing the exposure-bias
+gap.
 
-Re-running the eval with a parser that accepts both formats gives the numbers
-above. Sequence-level is unchanged at 40%; the others jumped from 0% to 44/46%.
-
-**Fix in the training pipeline** (not applied here): carry the system prompt
-through `prompt_msgs` and `full_msgs` in `token_level_distillation.py`,
-`on_policy.py`, and `cross_tokenizer.py` so the student is trained on the same
-context the teacher saw and the eval expects.
+Sequence-level resists overfitting in a different way: CE on literal tokens
+is harder to overshoot than KL on full distributions. The student can
+"perfectly match" a saved sequence at most once.
 
 ## Method-by-method
 
-### Sequence-level (40%)
-Standard SFT on the teacher's saved text. Cheapest, simplest, most predictable.
-Training loss `0.86 → 0.36` over 5 epochs. The format-mismatch issue can't
-touch it because the loss directly targets the saved tokens. A solid baseline
-that any white-box method should beat — and three out of three do (one of them
-narrowly).
+### Sequence-level (43%)
+Cheapest and most predictable. Cleanly converging CE (1.13 → 0.17 over 15
+epochs) and the best resistance to overfitting in this regime — at 15 epochs
+it's still climbing where token-level is collapsing. Strong default baseline
+for small datasets.
 
-### Token-level forward KL (44%)
-KL(teacher‖student) on the full vocab at every assistant token, α=0.1 CE
-anchor, T=2. Logged loss `0.66 → 0.57`. Beats sequence-level by 4 points (2 of
-50) — a modest but real lift for the same data budget, and consistent with the
-literature claim that token-level gives a denser signal than SFT. The match
-isn't huge here because Qwen2.5-0.5B is already similar in architecture to the
-teacher and 500 examples is a small budget.
+### Token-level forward KL (37%, ⚠ overfit)
+The cautionary tale of this run. At 5 epochs it was the best non-on-policy
+method (44%); at 15 epochs it's the worst of the same-tokenizer methods (37%)
+because the loss curve U-turned around epoch 5 and climbed steadily after
+that. The dense per-position signal that makes token-level powerful with a
+big dataset becomes a liability with 500 examples: too many gradient steps,
+too few distinct distributions to fit, the student memorizes and then drifts.
 
-### On-policy GKD (46%)
-Reverse KL with a 50/50 on-policy / off-policy mix at T=1. Best score (by 1
-example over token-level — within noise on n=50). Loss `0.19 → 0.15`. Cost:
-**35 minutes vs ~2 minutes** for the off-policy methods, because every
-on-policy step generates a full continuation from the student before the
-forward/backward. For this much extra compute on this size of student, the
-1-example lift over token-level is not worth it on its own — the win from
-on-policy is supposed to come from closing the train/test gap, and on 50
-problems we can't see a 4-point gap.
+A future run with fewer epochs (3–5) or a held-out validation set for early
+stopping would likely beat sequence-level here. As configured it doesn't.
 
-### Cross-tokenizer ULD (6%)
-Underperforms even the base model. Two compounding effects:
-1. **Weaker teacher.** SmolLM2-1.7B-Instruct (used here because we don't have
-   access to Llama-3.2-1B-Instruct) is smaller and a worse mathematician than
-   the Qwen 3B teacher used by methods 1–3. The student can't outrun a weak
-   teacher.
-2. **Method losses by design.** Character-offset alignment is approximate,
-   sorted top-K KL throws away token identity, and the tail past K is gone.
-   Even with a strong teacher this method should produce a noticeably weaker
-   student than same-tokenizer token-level KL.
-3. **Output format drift.** SmolLM2 doesn't default to `\boxed{N}` either; its
-   raw outputs end with prose like `... = 26 dollars.` and the parser misses
-   them. Some fraction of the 6% number is parser miss rather than wrong math.
+### On-policy GKD (44%)
+Best score, by 1 example over sequence-level (within noise on n=100). Notable
+that it didn't overfit despite 15 epochs of training with rich per-token KL —
+the constantly-changing on-policy data acts as implicit regularization.
 
-If cross-tokenizer is the only option (e.g. distilling from a proprietary
-teacher into your preferred arch), expect it to work — but on the same data
-budget against same-tokenizer methods it's strictly the worst tool here.
+The price: **114 minutes** vs 2.8–5.7 for the off-policy methods. Roughly
+20–40× the compute for a tied-with-noise score. Where on-policy *should*
+shine is on tasks where the student's generation distribution diverges
+materially from the teacher's (long-horizon agentic tasks, compounding
+errors). GSM8K with short responses isn't that regime.
+
+### Cross-tokenizer ULD (12%)
+Doubled from 6% (5ep) → 12% (15ep), and the system-prompt fix is part of why
+— but it still trails the same-tokenizer methods by 25+ points. Two reasons:
+1. **Weaker teacher.** SmolLM2-1.7B-Instruct (the open stand-in for the
+   gated Llama-3.2-1B-Instruct) is materially worse at GSM8K than the Qwen
+   3B teacher used by methods 1–3.
+2. **Method losses by design.** Character-offset alignment is approximate
+   (the two tokenizers split text very differently), sorted top-K KL throws
+   away token identity, and the tail past K=50 is gone.
+
+Reasonable lower bound for cross-tokenizer if you genuinely have no
+same-family teacher option, but on identical data against same-tokenizer
+methods it's strictly the worst tool.
 
 ## Caveats
 
-- **n=50 is small.** 1–2 example differences between sequence-level,
-  token-level, and on-policy are inside noise. The relative ordering matches
-  the theory but the gaps shouldn't be over-interpreted.
-- **Loss values are not directly comparable across methods.** Different loss
-  functions (CE vs full-vocab KL vs sorted-top-K KL vs masked-response KL)
-  with different temperatures and scales. Don't rank methods by loss
-  magnitude — only by the eval column.
-- **Greedy decoding only.** Sampling with temperature could change the ranking,
-  particularly for on-policy (which was trained to be mode-seeking under
-  reverse KL).
-- **One run per method.** No seed averaging. Reverse KL especially can be
-  unstable; a different RNG seed could move ULD or on-policy by several
-  points.
-- **The system-prompt drop is a real bug** in three of the four scripts. If
-  you fix it and re-run, the KL methods should slightly improve (cleaner
-  format adherence) without changing the ordering.
+- **n=100 is still small.** A 1–2 example gap between sequence-level and
+  on-policy can flip with a different RNG seed or eval split. The clear
+  signal is the *ordering* (on-policy ≈ sequence-level > token-level >> ULD),
+  not the exact numbers.
+- **Single seed.** No averaging.
+- **Greedy decoding only.** Reverse-KL methods (on-policy) were trained to
+  be mode-seeking; sampling at temperature could change the ranking.
+- **500 training examples is small.** The token-level overfitting story is
+  partly a function of dataset size. With 10K+ examples token-level should
+  comfortably beat sequence-level, matching the literature.
+- **One epoch count.** A proper comparison would track each method's eval
+  accuracy *vs epoch* and report each method's peak, not just the 15-epoch
+  endpoint. As reported, token-level is penalized for our choice of stopping
+  too late.
 
 ## Reproducing
 
 ```bash
-EPOCHS=5 uv run python -m src.sequence_level_distillation
-EPOCHS=5 uv run python -m src.token_level_distillation
-EPOCHS=5 uv run python -m src.on_policy
-EPOCHS=5 uv run python -m src.cross_tokenizer
-uv run python -m src.eval_gsm8k --n 50 --adapters base distilled_sequence_level \
+EPOCHS=15 uv run python -m src.sequence_level_distillation
+EPOCHS=15 uv run python -m src.token_level_distillation
+EPOCHS=15 uv run python -m src.cross_tokenizer
+EPOCHS=15 uv run python -m src.on_policy
+uv run python -m src.eval_gsm8k --n 100 --adapters base distilled_sequence_level \
   distilled_token_level distilled_student_onpolicy distilled_student_uld
 ```
 
-Run the trainings one at a time on this machine — parallel launches hit an
-NVML race in `caching_allocator_warmup` (likely a driver/library mismatch in
-this environment) and crash during model loading.
+Run sequentially on this machine — parallel launches hit an NVML race in
+`caching_allocator_warmup` (driver/library mismatch in this env) and crash
+during model loading. Total wall time: ~2h7m, of which 114 min is on-policy
+alone.

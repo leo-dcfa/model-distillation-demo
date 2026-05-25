@@ -1,5 +1,5 @@
-{"adapter": "base", "correct": 5, "total": 50, "accuracy": 0.1}
-{"adapter": "distilled_sequence_level", "correct": 20, "total": 50, "accuracy": 0.4}
-{"adapter": "distilled_token_level", "correct": 22, "total": 50, "accuracy": 0.44}
-{"adapter": "distilled_student_onpolicy", "correct": 23, "total": 50, "accuracy": 0.46}
-{"adapter": "distilled_student_uld", "correct": 3, "total": 50, "accuracy": 0.06}
+{"adapter": "base", "correct": 9, "total": 100, "accuracy": 0.09}
+{"adapter": "distilled_sequence_level", "correct": 43, "total": 100, "accuracy": 0.43}
+{"adapter": "distilled_token_level", "correct": 37, "total": 100, "accuracy": 0.37}
+{"adapter": "distilled_student_onpolicy", "correct": 44, "total": 100, "accuracy": 0.44}
+{"adapter": "distilled_student_uld", "correct": 12, "total": 100, "accuracy": 0.12}
