@@ -9,7 +9,6 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Final
 
 import torch
 from datasets.load import load_dataset
@@ -17,14 +16,10 @@ from peft import PeftModel
 from tqdm import tqdm
 
 from src.config import DEVICE, STUDENT_MODEL
+from src.constants import SYSTEM_PROMPT
 from src.utils import get_model, get_tokenizer
 
 
-SYSTEM_PROMPT: Final[str] = (
-    "You are a careful math tutor. Solve the problem step by step, "
-    "showing your reasoning clearly. End your response with the final "
-    "answer on its own line in the form '#### <number>'."
-)
 # Match either '#### N' (GSM8K convention requested in our system prompt) or
 # '\boxed{N}' (the default format Qwen2.5-3B-Instruct produces when no system
 # prompt is given — the KL-trained adapters fall back to this because their
