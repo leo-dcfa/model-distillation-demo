@@ -1,27 +1,6 @@
-"""
-Part 2, alternative method: ON-POLICY distillation (GKD-style).
+"""On-policy distillation (GKD-style). See README §"Method 3" for the motivation.
 
-The core idea fixes a subtle but real problem with the previous two methods.
-
-Sequence-level and token-level distillation both train the student on prefixes
-the *teacher* generated. At inference time, the student generates its own
-(messier) prefixes — and has never been trained to recover from its own mistakes.
-This is "exposure bias" or "train/test distribution mismatch."
-
-On-policy distillation flips this around:
-  1. The student generates a continuation from a prompt
-  2. The teacher scores its predicted distribution at each position of that continuation
-  3. The student is trained to match the teacher's distribution given the
-     student's own (often imperfect) prefixes
-
-It's like a coach correcting the student's mistakes in real-time, rather than
-demonstrating perfect technique on its own.
-
-We follow the GKD (Generalized Knowledge Distillation, Agarwal et al. 2024)
-recipe: mix on-policy steps with off-policy steps for stability. Pure on-policy
-can be unstable early when the student's generations are gibberish.
-
-Run: python distill_student_onpolicy.py
+Run:   python -m src.on_policy
 Output: ./distilled_student_onpolicy/  (LoRA adapter)
 """
 

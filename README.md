@@ -15,6 +15,36 @@ The teacher generates step-by-step solutions to [GSM8K math problems](https://hu
 3. On-policy / GKD
 4. Cross-tokenizer / ULD
 
+See [`COMPARISON.md`](./COMPARISON.md) for head-to-head GSM8K accuracy across
+the four methods plus the un-tuned base student.
+
+## Quickstart
+
+```bash
+# 1. Generate teacher solutions (one-off, ~5 min on a single GPU).
+uv run python -m src.generate_teacher_data
+
+# 2. Train any of the four students (LoRA adapters). EPOCHS is an env var.
+EPOCHS=5 uv run python -m src.sequence_level_distillation
+EPOCHS=5 uv run python -m src.token_level_distillation --kl forward  # or reverse
+EPOCHS=5 uv run python -m src.on_policy
+EPOCHS=5 uv run python -m src.cross_tokenizer
+
+# 3. Evaluate any combination against held-out GSM8K test problems.
+uv run python -m src.eval_gsm8k --n 100 --adapters base distilled_sequence_level \
+    distilled_token_level distilled_student_onpolicy distilled_student_uld
+```
+
+Train one method at a time on this machine — running multiple in parallel
+trips an NVML init race in `torch`'s caching-allocator warmup. On-policy is
+~20–40× slower than the off-policy methods because every step generates from
+the student.
+
+The student is `Qwen2.5-0.5B` and the same-tokenizer teacher is
+`Qwen2.5-3B-Instruct`; cross-tokenizer uses `SmolLM2-1.7B-Instruct` as a
+different-vocab teacher. All hyperparameters are inline constants at the top
+of each `src/*_distillation.py` / `src/on_policy.py` / `src/cross_tokenizer.py`.
+
 ## Method 1: Sequence-level distillation
 
 The simplest approach. The teacher generates a completion for each prompt; the
@@ -50,7 +80,7 @@ passes through it on every batch.
 
 ### Forward vs. reverse KL
 
-`token_level.py` accepts a `--kl` flag with two options:
+`src/token_level_distillation.py` accepts a `--kl` flag with two options:
 
 - **`--kl forward`** (default): minimizes `KL(teacher || student)`. This is
   *mode-covering* — the student is penalized for putting low probability where
