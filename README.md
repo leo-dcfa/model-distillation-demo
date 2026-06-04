@@ -277,17 +277,26 @@ or the logit-lens curve evolve over training.
 
 Four things to look at:
 
-1. **Logit lens** (`figures/logit_lens.png`) — reading the residual stream
-   through the unembedding at each layer shows the correct answer only
-   crystallises in the last ~3 of 24 layers, and the methods differ in exactly
-   where and how steeply.
-2. **Attention grid** (`figures/attention_grid.png`) — every head at one layer,
-   the usual cast on display: current-token, previous-token, and a first-token
-   attention sink.
-3. **Attention diff** (`figures/attention_diff.png`) — base vs distilled on the
-   single most-changed head. Because LoRA only touches attention, this *is* the
-   change distillation made, isolated.
-4. **Token shift** (`figures/token_shift.png`) — at the answer position the base
-   student starts by parroting the subject (`Sarah`); distillation teaches it to
-   open with a reasoning preamble (`To`, `Let`, `First`, …). The weak ULD student
-   shows a much smaller shift, mirroring its low accuracy.
+**1. Logit lens** — reading the residual stream through the unembedding at each
+layer shows the correct answer only crystallises in the last ~3 of 24 layers,
+and the methods differ in exactly where and how steeply.
+
+![Logit lens: P(correct answer) by residual-stream depth, per method](./figures/logit_lens.png)
+
+**2. Attention grid** — every head at one layer, the usual cast on display:
+current-token, previous-token, and a first-token attention sink.
+
+![Attention grid: every head at one layer](./figures/attention_grid.png)
+
+**3. Attention diff** — base vs distilled on the single most-changed head.
+Because LoRA only touches attention, this *is* the change distillation made,
+isolated.
+
+![Attention diff: base vs distilled on the most-changed head](./figures/attention_diff.png)
+
+**4. Token shift** — at the answer position the base student starts by parroting
+the subject (`Sarah`); distillation teaches it to open with a reasoning preamble
+(`To`, `Let`, `First`, …). The weak ULD student shows a much smaller shift,
+mirroring its low accuracy.
+
+![Token shift: which tokens distillation boosts or suppresses at the answer position](./figures/token_shift.png)
