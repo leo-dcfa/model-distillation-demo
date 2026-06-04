@@ -230,3 +230,41 @@ KL bottoming out mid-run and climbing back up: the 0.5B student memorises 500
 teacher distributions, then drifts (the overfitting story in `COMPARISON.md`).
 
 ![Real logged loss per method across the 15-epoch runs](./assets/loss_curves.png)
+
+## Looking inside the distilled students (TransformerLens)
+
+The accuracy numbers tell you *which* method won; they don't tell you *what
+changed inside the model*. Since every `distilled_*` folder is a LoRA adapter
+that only edits the attention projections, we can merge each adapter back into
+Qwen2.5-0.5B, load it into [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens),
+and watch the mechanism directly.
+
+```bash
+# Static figures for all five students (base + four methods) -> figures/
+uv run python -m src.visualize
+
+# Or explore interactively (hover-able attention via circuitsvis, logit lens, ...)
+uv run jupyter lab explore_distilled_models.ipynb
+```
+
+- `src/interp.py` — `load_hooked(adapter)` merges a LoRA adapter and returns a
+  `HookedTransformer`; pass `None` for the un-tuned base student.
+- `src/visualize.py` — writes four figures to `figures/`.
+- `explore_distilled_models.ipynb` — the same techniques, interactively.
+
+Four things to look at:
+
+1. **Logit lens** (`figures/logit_lens.png`) — reading the residual stream
+   through the unembedding at each layer shows the correct answer only
+   crystallises in the last ~3 of 24 layers, and the methods differ in exactly
+   where and how steeply.
+2. **Attention grid** (`figures/attention_grid.png`) — every head at one layer,
+   the usual cast on display: current-token, previous-token, and a first-token
+   attention sink.
+3. **Attention diff** (`figures/attention_diff.png`) — base vs distilled on the
+   single most-changed head. Because LoRA only touches attention, this *is* the
+   change distillation made, isolated.
+4. **Token shift** (`figures/token_shift.png`) — at the answer position the base
+   student starts by parroting the subject (`Sarah`); distillation teaches it to
+   open with a reasoning preamble (`To`, `Let`, `First`, …). The weak ULD student
+   shows a much smaller shift, mirroring its low accuracy.

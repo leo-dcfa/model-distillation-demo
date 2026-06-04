@@ -25,25 +25,23 @@ Run:  uv run python -m src.visualize
 import argparse
 from pathlib import Path
 
-import matplotlib
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
-
-from src.constants import SYSTEM_PROMPT  # noqa: E402
-from src.interp import MODELS, free, load_hooked  # noqa: E402
+from src.constants import SYSTEM_PROMPT
+from src.interp import MODELS, free, load_hooked
 
 
-FIG_DIR = Path("figures")
+DEFAULT_FIG_DIR = Path("figures")
 
 # Arithmetic completions the base student already gets right, so the logit-lens
 # curves are comparable across models. Each value is the (single-token) answer
 # digit we track through the layers.
 LOGIT_LENS_PROMPTS: dict[str, str] = {
     "2+2=": "4",
-    "9*9=": "8",      # 81
+    "9*9=": "8",  # 81
     "12-5=": "7",
     "Q: 7+5\nA: 7+5=": "1",  # 12
 }
@@ -123,7 +121,7 @@ def collect(args) -> dict:
     return data
 
 
-def plot_logit_lens(data: dict) -> None:
+def plot_logit_lens(data: dict, fig_dir: Path) -> None:
     fig, ax = plt.subplots(figsize=(9, 5.5))
     for label, _ in MODELS:
         curve = data["logit_lens"][label]
@@ -135,15 +133,14 @@ def plot_logit_lens(data: dict) -> None:
     ax.grid(alpha=0.3)
     ax.legend(title="student")
     fig.tight_layout()
-    out = FIG_DIR / "logit_lens.png"
+    out = fig_dir / "logit_lens.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     print(f"  wrote {out}")
 
 
-def plot_attention_grid(data: dict) -> None:
+def plot_attention_grid(data: dict, fig_dir: Path) -> None:
     patterns = data["attn"][FEATURED][ATTN_LAYER]  # [head, q, k]
-    tokens = data["str_tokens"]
     n_heads = data["n_heads"]
     ncols = 5
     nrows = int(np.ceil(n_heads / ncols))
@@ -159,13 +156,13 @@ def plot_attention_grid(data: dict) -> None:
         axes[extra].axis("off")
     fig.suptitle(f"{FEATURED} student — all {n_heads} attention heads at layer {ATTN_LAYER}\nprompt: {WORD_PROBLEM!r}", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    out = FIG_DIR / "attention_grid.png"
+    out = fig_dir / "attention_grid.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     print(f"  wrote {out}")
 
 
-def plot_attention_diff(data: dict) -> None:
+def plot_attention_diff(data: dict, fig_dir: Path) -> None:
     base = data["attn"]["base"]  # [layer, head, q, k]
     dist = data["attn"][FEATURED]
     tokens = data["str_tokens"]
@@ -179,7 +176,7 @@ def plot_attention_diff(data: dict) -> None:
     for ax, mat, title, cmap, kw in [
         (axes[0], b, "base", "viridis", {"vmin": 0, "vmax": 1}),
         (axes[1], d, FEATURED, "viridis", {"vmin": 0, "vmax": 1}),
-        (axes[2], d - b, f"{FEATURED} − base", "RdBu_r", {"vmin": -0.5, "vmax": 0.5}),
+        (axes[2], d - b, f"{FEATURED} - base", "RdBu_r", {"vmin": -0.5, "vmax": 0.5}),
     ]:
         im = ax.imshow(mat, cmap=cmap, aspect="auto", **kw)
         ax.set_title(title)
@@ -193,13 +190,13 @@ def plot_attention_diff(data: dict) -> None:
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.suptitle(f"What distillation changed — layer {layer}, head {head} (the most-changed head)", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    out = FIG_DIR / "attention_diff.png"
+    out = fig_dir / "attention_diff.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     print(f"  wrote {out}")
 
 
-def plot_token_shift(data: dict, top_k: int = 12) -> None:
+def plot_token_shift(data: dict, fig_dir: Path, top_k: int = 12) -> None:
     base = data["answer_logits"]["base"]  # probabilities
     fig, axes = plt.subplots(1, len(MODELS) - 1, figsize=(4.2 * (len(MODELS) - 1), 5.5))
     axes = np.array(axes).reshape(-1)
@@ -224,7 +221,7 @@ def plot_token_shift(data: dict, top_k: int = 12) -> None:
         fontsize=11,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.93))
-    out = FIG_DIR / "token_shift.png"
+    out = fig_dir / "token_shift.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     print(f"  wrote {out}")
@@ -232,22 +229,23 @@ def plot_token_shift(data: dict, top_k: int = 12) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", default="figures", help="Directory to write figures to.")
+    parser.add_argument("--out", default=str(DEFAULT_FIG_DIR), help="Directory to write figures to.")
     args = parser.parse_args()
 
-    global FIG_DIR
-    FIG_DIR = Path(args.out)
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    mpl.use("Agg")  # headless: write PNGs, never open a window
+
+    fig_dir = Path(args.out)
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     torch.set_grad_enabled(False)
     data = collect(args)
 
     print("plotting ...")
-    plot_logit_lens(data)
-    plot_attention_grid(data)
-    plot_attention_diff(data)
-    plot_token_shift(data)
-    print(f"done — see {FIG_DIR}/")
+    plot_logit_lens(data, fig_dir)
+    plot_attention_grid(data, fig_dir)
+    plot_attention_diff(data, fig_dir)
+    plot_token_shift(data, fig_dir)
+    print(f"done — see {fig_dir}/")
 
 
 if __name__ == "__main__":

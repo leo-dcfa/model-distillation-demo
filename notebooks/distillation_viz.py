@@ -18,7 +18,11 @@ the cells below are just the wiring from a UI control to a figure.
 import marimo
 
 
-app = marimo.App(width="medium")
+__generated_with = "0.23.8"
+app = marimo.App(
+    width="medium",
+    layout_file="layouts/distillation_viz.slides.json",
+)
 
 
 @app.cell
@@ -41,40 +45,76 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        # Four flavours of distillation, visualised
+    mo.md(r"""
+    # Four flavours of distillation, visualised
 
-        The README describes four ways to pour a big **teacher** model into a small
-        **student**. Words only get you so far — below, each method is an interactive
-        picture. The recurring question across all four:
+    The README describes four ways to pour a big **teacher** model into a small
+    **student**. Words only get you so far — below, each method is an interactive
+    picture. The recurring question across all four:
 
-        > *At each token, what does the teacher know, and how much of it does the
-        > student actually get to see?*
+    > *At each token, what does the teacher know, and how much of it does the
+    > student actually get to see?*
 
-        <span style="color:#2f6db5">**blue = teacher / target**</span> &nbsp;·&nbsp;
-        <span style="color:#d1772e">**orange = student**</span> &nbsp;·&nbsp;
-        <span style="color:#c2403d">**red = signal the method keeps**</span> &nbsp;·&nbsp;
-        <span style="color:#c9ccd1">**grey = signal thrown away**</span>
-        """
-    )
+    <span style="color:#2f6db5">**blue = teacher / target**</span> &nbsp;·&nbsp;
+    <span style="color:#d1772e">**orange = student**</span> &nbsp;·&nbsp;
+    <span style="color:#c2403d">**red = signal the method keeps**</span> &nbsp;·&nbsp;
+    <span style="color:#c9ccd1">**grey = signal thrown away**</span>
+    """)
     return
 
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        ---
-        ## Method 1 · Sequence-level (SFT on teacher text)
+    mo.md(r"""
+    ## The payoff first · what each method actually buys you
 
-        The teacher writes a full solution; the student is trained with plain
-        next-token cross-entropy to reproduce it. At every position the target is a
-        single token — the teacher's **argmax** — collapsed to a one-hot. Everything
-        the teacher *almost* said is discarded. Drag the slider to see how much of the
-        teacher's distribution survives the collapse to a one-hot label.
-        """
-    )
+    Before the mechanisms, the scoreboard from
+    [`COMPARISON.md`](../COMPARISON.md): a `Qwen2.5-0.5B` student evaluated on 100
+    held-out GSM8K problems after 15 epochs of distillation from a 3B teacher
+    (`SmolLM2-1.7B` for ULD). The un-tuned student scores **9%**; distillation
+    lifts it to as high as **44%**.
+    """)
+    return
+
+
+@app.cell
+def _(F):
+    F.headline_results()
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    The ordering — on-policy ≈ sequence-level > token-level >> cross-tokenizer — is
+    the robust signal; the 1-point on-policy/sequence-level gap is within noise at
+    n=100. Two caveats worth carrying into the rest of the notebook:
+
+    - **Token-level KL (37%) is *underperforming* here**, not broken. Its loss
+      U-turns mid-run — the 0.5B student memorises 500 teacher distributions by
+      ~epoch 5, then drifts. Fewer epochs or early stopping would likely put it
+      above sequence-level (see the loss panel at the end).
+    - **On-policy's tie comes at ~20–40× the compute** (114 min vs ~3–6 min). It
+      should pull ahead on long-horizon tasks where the student's own mistakes
+      compound — GSM8K's short answers aren't that regime.
+
+    Now, the mechanisms that produce these numbers.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ---
+    ## Method 1 · Sequence-level (SFT on teacher text)
+
+    The teacher writes a full solution; the student is trained with plain
+    next-token cross-entropy to reproduce it. At every position the target is a
+    single token — the teacher's **argmax** — collapsed to a one-hot. Everything
+    the teacher *almost* said is discarded. Drag the slider to see how much of the
+    teacher's distribution survives the collapse to a one-hot label.
+    """)
     return
 
 
@@ -100,27 +140,25 @@ def _(F, m1_conf):
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        **Takeaway.** Cheap and API-only (you just need `generate`), tokenizer-
-        agnostic — but the grey bars are real information the student never sees. If the
-        teacher was 55% on `"12"` and 20% on `"twelve"`, sequence-level tells the
-        student `"twelve"` was simply *wrong*.
+    mo.md(r"""
+    **Takeaway.** Cheap and API-only (you just need `generate`), tokenizer-
+    agnostic — but the grey bars are real information the student never sees. If the
+    teacher was 55% on `"12"` and 20% on `"twelve"`, sequence-level tells the
+    student `"twelve"` was simply *wrong*.
 
-        ---
-        ## Method 2 · Token-level KL (forward vs reverse)
+    ---
+    ## Method 2 · Token-level KL (forward vs reverse)
 
-        Now keep the whole distribution. At every position, match the student's full
-        next-token distribution to the teacher's by minimising a KL divergence. Two
-        knobs change the character of the result:
+    Now keep the whole distribution. At every position, match the student's full
+    next-token distribution to the teacher's by minimising a KL divergence. Two
+    knobs change the character of the result:
 
-        - **Temperature `T`** softens both distributions before comparing — exposing the
-          teacher's ranking of the *unlikely* tokens (the "dark knowledge").
-        - **KL direction**: *forward* `KL(teacher‖student)` is **mode-covering** (hedge,
-          spread mass to cover every teacher behaviour); *reverse* `KL(student‖teacher)`
-          is **mode-seeking** (commit to one mode, stay sharp).
-        """
-    )
+    - **Temperature `T`** softens both distributions before comparing — exposing the
+      teacher's ranking of the *unlikely* tokens (the "dark knowledge").
+    - **KL direction**: *forward* `KL(teacher‖student)` is **mode-covering** (hedge,
+      spread mass to cover every teacher behaviour); *reverse* `KL(student‖teacher)`
+      is **mode-seeking** (commit to one mode, stay sharp).
+    """)
     return
 
 
@@ -150,24 +188,22 @@ def _(F, m2_dir):
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        **Takeaway.** Token-level gives the student a *dense* signal — the full shape at
-        every position — but needs white-box access and a **matching tokenizer**.
-        Forward KL produces a hedging, hallucination-prone student; reverse KL (used by
-        on-policy below, following MiniLLM/GKD) produces a focused one.
+    mo.md(r"""
+    **Takeaway.** Token-level gives the student a *dense* signal — the full shape at
+    every position — but needs white-box access and a **matching tokenizer**.
+    Forward KL produces a hedging, hallucination-prone student; reverse KL (used by
+    on-policy below, following MiniLLM/GKD) produces a focused one.
 
-        ---
-        ## Method 3 · On-policy distillation (GKD)
+    ---
+    ## Method 3 · On-policy distillation (GKD)
 
-        Methods 1–2 train on prefixes the *teacher* wrote, so the student never
-        practises recovering from **its own** mistakes — that's exposure bias. On-policy
-        flips the data source: the **student generates**, the teacher **scores** that
-        rollout's distribution, and a fraction `α` of steps use these fresh on-policy
-        rollouts (the rest reuse teacher text for stability). Slide the mix and watch the
-        train/test gap close.
-        """
-    )
+    Methods 1–2 train on prefixes the *teacher* wrote, so the student never
+    practises recovering from **its own** mistakes — that's exposure bias. On-policy
+    flips the data source: the **student generates**, the teacher **scores** that
+    rollout's distribution, and a fraction `α` of steps use these fresh on-policy
+    rollouts (the rest reuse teacher text for stability). Slide the mix and watch the
+    train/test gap close.
+    """)
     return
 
 
@@ -186,28 +222,26 @@ def _(F, m3_ratio):
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        **Takeaway.** As `α → 1` the orange training distribution slides onto the dashed
-        test distribution — the student practises on exactly the (messier) prefixes it
-        will face at inference. The cost is brutal: every on-policy step runs a full
-        sampling pass through the student first, which is why on-policy is ~20–40× slower
-        here (114 min vs ~3–6 min for the off-policy methods).
+    mo.md(r"""
+    **Takeaway.** As `α → 1` the orange training distribution slides onto the dashed
+    test distribution — the student practises on exactly the (messier) prefixes it
+    will face at inference. The cost is brutal: every on-policy step runs a full
+    sampling pass through the student first, which is why on-policy is ~20–40× slower
+    here (114 min vs ~3–6 min for the off-policy methods).
 
-        ---
-        ## Method 4 · Cross-tokenizer (ULD)
+    ---
+    ## Method 4 · Cross-tokenizer (ULD)
 
-        Token-level KL is undefined when teacher and student have **different
-        vocabularies** — their distributions live in non-comparable spaces. ULD bridges
-        that with two tricks, both visible below:
+    Token-level KL is undefined when teacher and student have **different
+    vocabularies** — their distributions live in non-comparable spaces. ULD bridges
+    that with two tricks, both visible below:
 
-        1. **Align by character offset.** Each student response token is matched to the
-           teacher token whose span *ends at the closest character*.
-        2. **Sorted top-K matching.** At each aligned pair, take the top-K probabilities
-           from each side, **sort** them, and compare those shapes — token identity is
-           thrown away, so the comparison lives in a vocab-independent K-dim space.
-        """
-    )
+    1. **Align by character offset.** Each student response token is matched to the
+       teacher token whose span *ends at the closest character*.
+    2. **Sorted top-K matching.** At each aligned pair, take the top-K probabilities
+       from each side, **sort** them, and compare those shapes — token identity is
+       thrown away, so the comparison lives in a vocab-independent K-dim space.
+    """)
     return
 
 
@@ -232,22 +266,20 @@ def _(F, m4_topk):
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        **Takeaway.** ULD is the only method here that crosses model families — but it's
-        lossy on three axes at once (approximate alignment, identity-blind sorted
-        matching, truncated tail), which is why it trails the same-tokenizer methods by
-        25+ points in `COMPARISON.md`.
+    mo.md(r"""
+    **Takeaway.** ULD is the only method here that crosses model families — but it's
+    lossy on three axes at once (approximate alignment, identity-blind sorted
+    matching, truncated tail), which is why it trails the same-tokenizer methods by
+    25+ points in `COMPARISON.md`.
 
-        ---
-        ## Epilogue · the real training curves
+    ---
+    ## Epilogue · the real training curves
 
-        Everything above is a cartoon of the *mechanism*. Here are the actual loss
-        trajectories logged by `src/logger.py` during the 15-epoch runs. Magnitudes
-        aren't comparable across panels (different losses, temperatures, scales) — only
-        the *shape within a panel* is meaningful.
-        """
-    )
+    Everything above is a cartoon of the *mechanism*. Here are the actual loss
+    trajectories logged by `src/logger.py` during the 15-epoch runs. Magnitudes
+    aren't comparable across panels (different losses, temperatures, scales) — only
+    the *shape within a panel* is meaningful.
+    """)
     return
 
 

@@ -19,6 +19,7 @@ matplotlib.use("Agg")
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 FIGURES = {
+    "headline_results.png": lambda: F.headline_results(),
     "method1_sequence_level.png": lambda: F.sequence_level(0.55),
     "method2_token_match.png": lambda: F.token_level_match(2.0),
     "method2_kl_forward.png": lambda: F.kl_direction(reverse=False),

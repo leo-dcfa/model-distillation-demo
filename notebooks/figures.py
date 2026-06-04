@@ -33,6 +33,56 @@ def _despine(ax, sides=("top", "right")):
 
 
 # --------------------------------------------------------------------------- #
+# Headline · the payoff (from COMPARISON.md)
+# --------------------------------------------------------------------------- #
+# GSM8K accuracy on 100 held-out problems, greedy decoding, 15-epoch runs.
+# (Method, accuracy %, colour). Base is the un-tuned Qwen2.5-0.5B student.
+HEADLINE = [
+    ("On-policy GKD", 44, KEPT_C),
+    ("Sequence-level", 43, STUDENT_C),
+    ("Token-level KL", 37, TEACHER_C),
+    ("Cross-tokenizer ULD", 12, "#6a3d9a"),
+]
+BASE_ACC = 9
+
+
+def headline_results():
+    """The payoff: GSM8K@100 lift over the un-tuned student for each method."""
+    rows = sorted(HEADLINE, key=lambda r: r[1])  # ascending → best ends up on top
+    names = [r[0] for r in rows]
+    accs = [r[1] for r in rows]
+    colors = [r[2] for r in rows]
+    y = np.arange(len(rows))
+
+    fig, ax = plt.subplots(figsize=(9.5, 4.2))
+    ax.barh(y, accs, color=colors, height=0.62, zorder=3)
+
+    # Base baseline: a vertical reference line everything is measured against.
+    ax.axvline(BASE_ACC, color="#888", ls="--", lw=1.4, zorder=2)
+    ax.text(BASE_ACC + 0.5, -0.72, f"base (no distillation): {BASE_ACC}%", color="#666", fontsize=9, va="center", ha="left")
+
+    for yi, acc in zip(y, accs, strict=True):
+        ax.text(
+            acc + 0.6, yi, f"{acc}%   (+{acc - BASE_ACC} vs base)", va="center", ha="left", fontsize=10, fontweight="bold", color="#333"
+        )
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(names, fontsize=10)
+    ax.set_xlim(0, 56)
+    ax.set_ylim(-1.0, len(rows) - 0.3)
+    ax.set_xlabel("GSM8K accuracy on 100 held-out problems (%)")
+    ax.set_title(
+        "What distillation buys you\na 0.5B student goes from 9% → up to 44%, taught by a 3B teacher",
+        fontsize=11,
+    )
+    _despine(ax, ("top", "right"))
+    ax.xaxis.grid(True, color="#eee", zorder=0)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    return fig
+
+
+# --------------------------------------------------------------------------- #
 # Method 1 · Sequence-level
 # --------------------------------------------------------------------------- #
 def sequence_level(confidence: float = 0.55):
