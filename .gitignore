@@ -14,3 +14,4 @@ wheels/
 
 logs
 distilled_*/
+__marimo__/session

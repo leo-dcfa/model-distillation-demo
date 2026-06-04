@@ -12,6 +12,7 @@ dependencies = [
     "peft>=0.19.1",
     "torch>=2.7",
     "tqdm>=4.67.3",
+    "transformer-lens>=3.3.0",
     "transformers>=5.8.0",
     "trl>=1.4.0",
 ]
@@ -26,6 +27,10 @@ torch = { index = "pytorch-cu128" }
 
 [dependency-groups]
 dev = [
+    "circuitsvis>=1.43.3",
+    "ipykernel>=7.2.0",
+    "marimo>=0.23.8",
+    "nbconvert>=7.17.1",
     "pre-commit>=4.6.0",
     "ruff>=0.15.12",
 ]
@@ -82,6 +87,18 @@ ignore = [
     "PLW2901", # for-loop variable overwritten — often intentional
     "TRY003",  # long messages outside exception class — too noisy
     "PLC0415", # imports not at top of file — sometimes needed for lazy torch/cuda import
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The marimo notebook + its figure helpers use scientific single-letter names
+# (T for temperature, F for the figures module / torch-style aliases) and rely
+# on marimo's "bare expression = cell output" idiom, which reads as a useless
+# expression to the linter.
+"notebooks/*.py" = [
+    "B018",  # bare expression — that's how a marimo cell renders its output
+    "N803",  # arg name `T` (temperature) etc.
+    "N806",  # local `T` etc.
+    "N812",  # `import figures as F` / matplotlib-style aliases
 ]
 
 [tool.ruff.lint.isort]

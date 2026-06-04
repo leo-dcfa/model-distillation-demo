@@ -18,6 +18,23 @@ The teacher generates step-by-step solutions to [GSM8K math problems](https://hu
 See [`COMPARISON.md`](./COMPARISON.md) for head-to-head GSM8K accuracy across
 the four methods plus the un-tuned base student.
 
+## Visualising the four methods
+
+Each method below comes with a picture of its *mechanism* — what signal the
+teacher has and how much of it the student actually receives. An interactive
+[marimo](https://marimo.io) notebook lets you drive every figure with a slider
+(teacher confidence, KL temperature, on-policy mix, top-K):
+
+```bash
+uv run marimo edit notebooks/distillation_viz.py     # interactive, with sliders
+uv run marimo run  notebooks/distillation_viz.py     # read-only app
+uv run python notebooks/export_figures.py            # regenerate the static PNGs below
+```
+
+Throughout: **<span title="teacher">blue = teacher / target</span>**,
+**orange = student**, **red = signal the method keeps**,
+**grey = signal thrown away**.
+
 ## Quickstart
 
 ```bash
@@ -51,6 +68,12 @@ The simplest approach. The teacher generates a completion for each prompt; the
 student is fine-tuned with standard next-token cross-entropy on those completions.
 We're treating the teacher's output text as ground truth and doing ordinary SFT.
 
+![Sequence-level: the teacher's full distribution collapses to a one-hot label](./assets/method1_sequence_level.png)
+
+The teacher's full next-token distribution (left) is collapsed to the single
+argmax token (right). Everything else — including near-synonyms the teacher
+rated highly — is discarded before the student ever sees it.
+
 **Pros.** Works against any API (you only need to call generate). Cheap to
 implement. No tokenizer constraints — the student can have a completely
 different vocabulary from the teacher. This is how DeepSeek's R1-Distill
@@ -66,6 +89,12 @@ The direct LLM analog of Hinton's classical method. At every position in a
 sequence, compute the KL divergence between the teacher's full next-token
 distribution (over the whole vocabulary) and the student's. Loss is averaged
 across positions where the assistant is talking (we mask out user prompt tokens).
+
+![Token-level: match the student's full distribution to the teacher's at every position](./assets/method2_token_match.png)
+
+Instead of one-hot, the student is pulled toward the teacher's *whole* shape.
+Temperature softens both bars first, surfacing the teacher's ranking of the rare
+tokens (its "dark knowledge").
 
 **Pros.** The student receives a much denser training signal — instead of "the
 right token is X," it learns "given this context, here's the full shape of
@@ -94,6 +123,14 @@ passes through it on every batch.
   behavior. The MiniLLM paper (Gu et al. 2024) showed this produces more focused,
   less hallucinatory students.
 
+Fitting a single-mode student to a two-mode teacher makes the difference vivid —
+forward KL stretches to cover both modes (and hedges the empty middle); reverse
+KL commits to one mode and stays sharp:
+
+| forward `KL(teacher‖student)` — mode-covering | reverse `KL(student‖teacher)` — mode-seeking |
+| --- | --- |
+| ![forward KL covers both modes](./assets/method2_kl_forward.png) | ![reverse KL locks onto one mode](./assets/method2_kl_reverse.png) |
+
 Most modern LLM distillation uses reverse KL or a hybrid. Our on-policy script
 uses reverse KL by default, following GKD.
 
@@ -116,6 +153,14 @@ on-policy steps with off-policy steps (using the teacher's pre-generated text)
 for stability. Pure on-policy is unstable early because the student's
 generations are gibberish — there's nothing useful for the teacher to score.
 Loss is reverse KL with T=1, following MiniLLM/GKD.
+
+![On-policy: the step mix, and the exposure-bias gap it closes](./assets/method3_on_policy.png)
+
+Left: each step's prefix is either a fresh student rollout or pre-generated
+teacher text (the GKD mix). Right: off-policy training (α=0) optimises the
+student on the teacher's prefix distribution — but at inference the student
+generates its own (the dashed curve). As α rises, the training distribution
+slides onto the test distribution and the gap shrinks.
 
 **Pros.** Closes the train/test gap. The student is explicitly trained on the
 distribution it will actually see at inference, including its own
@@ -148,6 +193,18 @@ mismatch with two tricks:
    the distribution is matched. That shape lives in a vocab-independent
    K-dimensional space, so the comparison is well-defined.
 
+![ULD step 1: align two different tokenizations by ending character](./assets/method4_uld_alignment.png)
+
+Step 1 — the same response text segmented two different ways, aligned by which
+character each token *ends* on. The teacher's `" 1"`/`"2"` split has no clean
+student counterpart, so the match is approximate.
+
+![ULD step 2: compare sorted top-K probability shapes, identity discarded](./assets/method4_uld_sorted_topk.png)
+
+Step 2 — at each aligned position, sort each side's top-K probabilities and
+compare the two *shapes*. Token identity is thrown away, so the comparison lives
+in a vocab-independent K-dimensional space (and the tail past K is gone).
+
 This repo distills `SmolLM2-1.7B-Instruct` (teacher) → `Qwen2.5-0.5B`
 (student) — two completely different tokenizers.
 
@@ -162,3 +219,14 @@ the top-K cutoff truncates the tail entirely. Expect a noticeably weaker
 student than same-tokenizer token-level distillation on the same data. Also
 the most fiddly of the four to implement correctly — most of the code is
 alignment bookkeeping, not the loss itself.
+
+## The real training curves
+
+The pictures above are cartoons of each *mechanism*. Below are the actual loss
+trajectories logged during the 15-epoch runs (`src/logger.py` → `logs/`).
+Magnitudes aren't comparable across panels — different losses, temperatures and
+scales — only the shape *within* a panel is meaningful. Note token-level forward
+KL bottoming out mid-run and climbing back up: the 0.5B student memorises 500
+teacher distributions, then drifts (the overfitting story in `COMPARISON.md`).
+
+![Real logged loss per method across the 15-epoch runs](./assets/loss_curves.png)
