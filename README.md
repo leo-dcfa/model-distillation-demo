@@ -244,13 +244,36 @@ and watch the mechanism directly.
 uv run python -m src.visualize
 
 # Or explore interactively (hover-able attention via circuitsvis, logit lens, ...)
-uv run jupyter lab explore_distilled_models.ipynb
+uv run marimo edit notebooks/explore_distilled_models.py     # interactive
+uv run marimo run  notebooks/explore_distilled_models.py     # read-only app
 ```
 
 - `src/interp.py` — `load_hooked(adapter)` merges a LoRA adapter and returns a
   `HookedTransformer`; pass `None` for the un-tuned base student.
 - `src/visualize.py` — writes four figures to `figures/`.
-- `explore_distilled_models.ipynb` — the same techniques, interactively.
+- `notebooks/explore_distilled_models.py` — the same techniques, interactively (marimo).
+
+`explore_distilled_models.py` is the interactive twin of `src/visualize.py`: a
+guided walkthrough that loads two students live (the un-tuned base and a
+distilled one) and steps through six cells —
+
+1. **Load** the base and a distilled student into `HookedTransformer`s that
+   share the Qwen tokenizer, so positions line up and the two can be diffed.
+2. **Generate side-by-side** on a word problem through the chat template, so you
+   can watch the base ramble while the distilled student reasons to `#### <n>`.
+3. **Hover-able attention** rendered with [circuitsvis](https://github.com/TransformerLensOrg/CircuitsVis) —
+   the same heads as the static grid, but you mouse over a token to see where
+   each head looks (the static PNG can't do this).
+4. **Logit-lens curves** for all five methods on one axis — where each builds the
+   answer with depth.
+5. **Attention diff** on the single most-changed head (base vs distilled).
+6. **First-token shift** — which tokens distillation boosts or suppresses at the
+   answer position.
+
+Swap `"distilled_sequence_level"` for `distilled_token_level`,
+`distilled_student_onpolicy`, or `distilled_student_uld` and re-run to compare
+methods; point it at a `distilled_*/checkpoint-*` folder to watch a single head
+or the logit-lens curve evolve over training.
 
 Four things to look at:
 

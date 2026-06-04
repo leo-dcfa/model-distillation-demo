@@ -1,12 +1,45 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "marimo",
+#     "matplotlib",
+#     "numpy",
+#     "torch",
+#     "transformer-lens",
+#     "transformers",
+#     "peft",
+#     "circuitsvis",
+# ]
+# ///
+"""Looking inside the LoRA-distilled students with TransformerLens.
+
+Run it:
+
+    uv run marimo edit notebooks/explore_distilled_models.py     # interactive
+    uv run marimo run  notebooks/explore_distilled_models.py     # read-only app
+
+The interactive twin of ``src/visualize.py``: hover-able attention patterns,
+logit-lens curves, and per-token probability diffs across the distilled students.
+"""
+
 import marimo
 
 
 __generated_with = "0.23.8"
-app = marimo.App()
+app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
+    import sys
+    from pathlib import Path
+
+    # Make `import src` resolve whether marimo is launched from the repo root
+    # or from inside notebooks/.
+    _root = Path(__file__).resolve().parent.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
+
     import marimo as mo
 
     return (mo,)
@@ -33,7 +66,7 @@ def _(mo):
 
     The static-figure version of everything here lives in `src/visualize.py` (run `uv run python -m src.visualize`).
 
-    > Run this notebook from the repo root so `import src` resolves.
+    > Launch with `uv run marimo edit notebooks/explore_distilled_models.py` — the first cell puts the repo root on `sys.path` so `import src` resolves either way.
     """)
     return
 
@@ -87,7 +120,7 @@ def _(mo):
 
 @app.cell
 def _(SYSTEM_PROMPT, base, student):
-    question = "Bob has 5 watermelons. He buys another 4 times as many as he already has. How many watermelons does Bob have now?"
+    question = "Sarah has 5 apples; she buys 3 apples. How many apples does she have now?"
     prompt = student.tokenizer.apply_chat_template(
         [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question}], tokenize=False, add_generation_prompt=True
     )
